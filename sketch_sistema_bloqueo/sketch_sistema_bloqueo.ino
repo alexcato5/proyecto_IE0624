@@ -238,7 +238,7 @@ void loop() {
           digitalWrite(LedAmarillo, LOW);
         }
         numeroGolpes = 0;
-        estadoActual = ESTADO_BLOQUEADO;          
+        estadoActual = ESTADO_DESBLOQUEADO;          
       } else {
         estadoActual = ESTADO_PATRON;
       }
