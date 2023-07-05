@@ -45,8 +45,8 @@ const int pulsadorPatron  = 13;
 /* Pines para Arduino Nano BLE 33
 */
 const int piezoelectrico  = A3;
-const int pulsadorBloqueo = D2;
-const int pulsadorPatron  = D3;
+const int pulsadorPatron  = D2;
+const int pulsadorBloqueo = D3;
 const int LedBlanco       = D4;
 const int LedAzul         = D5;
 const int LedRojo         = D6;
@@ -55,14 +55,15 @@ const int LedRojo         = D6;
 // Variables globales
 Estado estadoActual;
 Servo motor;
-const int UMBRAL_GOLPE_SUAVE = 100;
-const int UMBRAL_GOLPE_FUERTE = 10000;
+const int UMBRAL_GOLPE_SUAVE = 15;
+const int UMBRAL_GOLPE_FUERTE = 1000;
 int   ValorGolpe;
 int   ValorPulsadorBloqueo;
 int   valorPulsadorPatron;
 char  golpe;
 int   datosGolpe[10];
-char  patronDesbloqueo[5] = {'D', 'D', 'D', 'D', 'D'};
+// Patrón de desbloqueo por defecto
+char  patronDesbloqueo[5] = {'D', 'F', 'D', 'F', 'D'};
 char  patronIntento[5];
 int   numeroGolpes;
 bool  programarPatron;
@@ -92,7 +93,7 @@ void setup() {
   digitalWrite(LedRojo, HIGH);
   motor.write(0);
   Serial.println("La caja está bloqueada");
-  
+  delay(1500);
   numeroGolpes = 0;
 } // fin de setup
 
@@ -104,11 +105,16 @@ que dura varios milisegundos. Se retorna la decisión tomada como un char.
 char interpretarGolpe(int primerValorLeido)
 {
   int sumaIntensidades = primerValorLeido;
-  for(int i=0; i<10; i++)
+  for(int i=0; i< 30; i++)
   {
     sumaIntensidades += analogRead(piezoelectrico);
   }
 
+  //SOLO PARA DEBUG
+  if(primerValorLeido >= UMBRAL_GOLPE_SUAVE){
+    Serial.print("Intensidad sumada: ");
+    Serial.println(sumaIntensidades);
+  }
   return (sumaIntensidades > UMBRAL_GOLPE_FUERTE)? 'F':'D';    
 }
 
@@ -126,25 +132,31 @@ void loop() {
     
     case ESTADO_BLOQUEADO:
       // Configuración inicial de bloqueo
-      motor.write(0);
       digitalWrite(LedRojo,    HIGH);
       digitalWrite(LedAzul,    LOW);
       digitalWrite(LedBlanco, LOW);
-
-      lecturaAnalogica = analogRead(piezoelectrico);
-      //Serial.println("Valor leido:");
-      //Serial.println(lecturaAnalogica);
       
+      lecturaAnalogica = analogRead(piezoelectrico);      
       golpeRecibido = golpeValido(lecturaAnalogica);
-      
       
       if (golpeRecibido && numeroGolpes < 4)
       {
-        Serial.println("Se recibió golpe");
+        Serial.println("");
+        Serial.print("Golpes detectados: ");
+        Serial.println(numeroGolpes+1);
+        Serial.print("Intensidad inicial: ");
+        Serial.println(lecturaAnalogica);
         
         patronIntento[numeroGolpes] = interpretarGolpe(lecturaAnalogica);
+        
+        Serial.print("Tipo: ");
         Serial.println(patronIntento[numeroGolpes]);
+
+        delay(200);
         numeroGolpes++;
+        digitalWrite(LedBlanco, HIGH);
+        delay(150);
+        digitalWrite(LedBlanco, LOW);
         estadoActual = ESTADO_BLOQUEADO;
       } else if(golpeRecibido && numeroGolpes >= 4)
       {
@@ -152,18 +164,18 @@ void loop() {
         patronIntento[4] = interpretarGolpe(lecturaAnalogica);
 
         Serial.println("El patrón con el que se intenta desbloquear es: ");
-        Serial.println(patronIntento[0]);
-        Serial.println(patronIntento[1]);
-        Serial.println(patronIntento[2]);
-        Serial.println(patronIntento[3]);
+        Serial.print(patronIntento[0]);
+        Serial.print(patronIntento[1]);
+        Serial.print(patronIntento[2]);
+        Serial.print(patronIntento[3]);
         Serial.println(patronIntento[4]);
         Serial.println("^ ^ ^");
 
         Serial.println("El patrón de desbloqueo correcto es: ");
-        Serial.println(patronDesbloqueo[0]);
-        Serial.println(patronDesbloqueo[1]);
-        Serial.println(patronDesbloqueo[2]);
-        Serial.println(patronDesbloqueo[3]);
+        Serial.print(patronDesbloqueo[0]);
+        Serial.print(patronDesbloqueo[1]);
+        Serial.print(patronDesbloqueo[2]);
+        Serial.print(patronDesbloqueo[3]);
         Serial.println(patronDesbloqueo[4]);
         Serial.println("^ ^ ^");
 
@@ -171,16 +183,15 @@ void loop() {
         bool patronAcertado = true;
         for(int k=0; k < 5; k++)
         {
-          patronAcertado = patronAcertado && (patronIntento[k] == patronDesbloqueo[k]);
-          Serial.println(patronAcertado);  
+          patronAcertado = patronAcertado && (patronIntento[k] == patronDesbloqueo[k]); 
         }
 
-        if(patronAcertado){
+        if(patronAcertado)
+        {
           estadoActual = ESTADO_DESBLOQUEADO;
           digitalWrite(LedRojo,   LOW);
           for(int i=0; i<3; i++){
             digitalWrite(LedBlanco, HIGH);
-            digitalWrite(LedAzul,     LOW);
             delay(666);
             digitalWrite(LedAzul,    HIGH);
             digitalWrite(LedBlanco,  LOW);
@@ -191,10 +202,10 @@ void loop() {
           digitalWrite(LedAzul, LOW);
           for(int i=0; i<3; i++){
             digitalWrite(LedBlanco, HIGH);
-            digitalWrite(LedRojo,      LOW);
             delay(666);
             digitalWrite(LedBlanco,  LOW);
             digitalWrite(LedRojo,     HIGH);
+            delay(666);
           }
         }
       }
@@ -212,9 +223,18 @@ void loop() {
       valorPulsadorPatron   = digitalRead(pulsadorPatron);
       ValorPulsadorBloqueo  = digitalRead(pulsadorBloqueo);
 
-      if(ValorPulsadorBloqueo) { estadoActual = ESTADO_BLOQUEADO; Serial.println("Se pasará al modo de bloqueo"); }
-      else if(valorPulsadorPatron)       { estadoActual = ESTADO_PATRON; Serial.println("Modo de configuración de patrón activado");}
-      else                          { estadoActual = ESTADO_DESBLOQUEADO; }
+      if(ValorPulsadorBloqueo) {
+        estadoActual = ESTADO_BLOQUEADO; 
+        Serial.println("Se pasará al modo de bloqueo"); 
+        motor.write(0);
+        // Retraso para evitar falsas lecturas
+        delay(1500);
+      } else if(valorPulsadorPatron) { 
+        estadoActual = ESTADO_PATRON; 
+        Serial.println("Modo de configuración de patrón activado");
+        // Retraso para evitar falsas lecturas
+        delay(1500);
+      } else { estadoActual = ESTADO_DESBLOQUEADO; }
       break;
       
     case ESTADO_PATRON:
@@ -223,15 +243,27 @@ void loop() {
       digitalWrite(LedAzul,    HIGH);
       digitalWrite(LedBlanco, HIGH);
       digitalWrite(LedRojo,     LOW);
-      motor.write(90);
 
       lecturaAnalogica = analogRead(piezoelectrico);
       golpeRecibido = golpeValido(lecturaAnalogica);
 
       if (golpeRecibido && numeroGolpes < 4)
       {
+        Serial.println("");
+        Serial.print("Golpes detectados: ");
+        Serial.println(numeroGolpes+1);
+        Serial.print("Intensidad inicial: ");
+        Serial.println(lecturaAnalogica);
         patronDesbloqueo[numeroGolpes] = interpretarGolpe(lecturaAnalogica);
+        Serial.print("Tipo: ");
+        Serial.println(patronDesbloqueo[numeroGolpes]);
+        
+        delay(200);
         numeroGolpes++;
+        digitalWrite(LedBlanco, LOW);
+        delay(150);
+        digitalWrite(LedBlanco, HIGH);
+
         estadoActual = ESTADO_PATRON; 
       } else if(golpeRecibido && numeroGolpes >= 4)
       {
@@ -248,12 +280,13 @@ void loop() {
         // Animación con LEDs para confirmar al usuario
         for(int i=0; i<3; i++){
           digitalWrite(LedBlanco, HIGH);
-          digitalWrite(LedAzul,    HIGH);
-          digitalWrite(LedRojo,     HIGH);
-          delay(2000);
-          digitalWrite(LedRojo,     LOW);
+          digitalWrite(LedAzul,   HIGH);
+          digitalWrite(LedRojo,   HIGH);
+          delay(500);
+          digitalWrite(LedRojo,    LOW);
           digitalWrite(LedAzul,    LOW);
-          digitalWrite(LedBlanco, LOW);
+          digitalWrite(LedBlanco,  LOW);
+          delay(500);
         }
         numeroGolpes = 0;
         estadoActual = ESTADO_DESBLOQUEADO;          
